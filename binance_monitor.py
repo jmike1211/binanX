@@ -187,8 +187,8 @@ class BinanceTwitterMonitor:
         
         return message
     
-    def run_monitor(self):
-        """執行監控"""
+    def run_monitor_loop(self):
+        """執行迴圈監控"""
         logger.info(f"開始監控帳號: @{self.target_username}")
         if self.filter_keywords:
             logger.info(f"篩選關鍵字: {', '.join(self.filter_keywords)}")
@@ -214,6 +214,25 @@ class BinanceTwitterMonitor:
                 logger.error(f"監控過程中發生錯誤: {str(e)}")
                 time.sleep(60)  # 發生錯誤時等待 1 分鐘後重試
 
+    def run_monitor_once(self):
+        """執行監控"""
+        logger.info(f"開始監控帳號: @{self.target_username}")
+        if self.filter_keywords:
+            logger.info(f"篩選關鍵字: {', '.join(self.filter_keywords)}")
+        else:
+            logger.info("監控該帳號的所有推文")
+        
+        try:
+            # 搜尋一次推文
+            data = self.search_tweets()
+            
+            if data:
+                self.process_tweets(data)
+            
+        except Exception as e:
+            logger.error(f"監控過程中發生錯誤: {str(e)}")
+
+
 def main():
     # 檢查環境變數
     required_vars = ['X_BEARER_TOKEN', 'LINE_BOT_TOKEN', 'LINE_GROUP_ID']
@@ -226,7 +245,7 @@ def main():
     # 建立監控器並開始執行
     monitor = BinanceTwitterMonitor()
     # monitor.send_line_message("測試訊息, 詐騙死全家")
-    monitor.run_monitor()
+    monitor.run_monitor_once()
 
 if __name__ == "__main__":
     main()
