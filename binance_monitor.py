@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
 class BinanceTwitterMonitor:
     def __init__(self):
         # X API 設定 (免費版)
@@ -24,35 +25,15 @@ class BinanceTwitterMonitor:
         self.x_api_url = "https://api.twitter.com/2/tweets/search/recent"
         self.line_api_url = "https://api.line.me/v2/bot/message/push"
         
-        # 搜尋參數 - 多關鍵字監控
-        self.keywords = ["幣安", "上線", "alpha", "TGE"]
-        self.search_query = self.build_search_query()
+        # 指定監控的帳號
+        self.target_username = os.getenv('TARGET_USERNAME')
+        self.search_query = f"from:{self.target_username}"
+        
+        # 可選：如果想要進一步篩選特定關鍵字
+        self.filter_keywords = ["上线", "Alpha", "TGE", "积分"]  # 可以留空 [] 來取得所有推文
+        
         self.last_tweet_id = None
         
-    def build_search_query(self):
-        """建立搜尋查詢字串"""
-        # 方法1: 包含所有關鍵字 (AND 邏輯)
-        # return " ".join(self.keywords)
-        
-        # 方法2: 包含任一關鍵字 (OR 邏輯)
-        return " OR ".join(self.keywords)
-    
-    def check_keywords_match(self, text):
-        """檢查推文是否符合關鍵字條件"""
-        text_lower = text.lower()
-        
-        # 策略1: 必須包含所有關鍵字
-        # return all(keyword.lower() in text_lower for keyword in self.keywords)
-        
-        # 策略2: 包含任一關鍵字即可
-        return any(keyword.lower() in text_lower for keyword in self.keywords)
-        
-        # 策略3: 自定義組合邏輯
-        # 例如：必須包含「幣安」且包含「上線」或「alpha」或「TGE」
-        # has_binance = "幣安" in text_lower
-        # has_others = any(keyword.lower() in text_lower for keyword in ["上線", "alpha", "tge"])
-        # return has_binance and has_others
-    
     def get_twitter_headers(self):
         """取得 X API 請求標頭"""
         return {
@@ -68,7 +49,7 @@ class BinanceTwitterMonitor:
         }
     
     def search_tweets(self):
-        """搜尋包含指定關鍵字的推文"""
+        """搜尋指定帳號的推文"""
         params = {
             "query": self.search_query,
             "tweet.fields": "created_at,author_id,text,public_metrics",
@@ -99,6 +80,16 @@ class BinanceTwitterMonitor:
         except Exception as e:
             logger.error(f"搜尋推文時發生錯誤: {str(e)}")
             return None
+    
+    def check_keywords_match(self, text):
+        """檢查推文是否符合關鍵字條件（如果有設定的話）"""
+        # 如果沒有設定篩選關鍵字，回傳所有推文
+        if not self.filter_keywords:
+            return True
+        
+        # 如果有設定篩選關鍵字，檢查是否包含任一關鍵字
+        text_lower = text.lower()
+        return any(keyword.lower() in text_lower for keyword in self.filter_keywords)
     
     def send_line_message(self, message):
         """發送訊息到 LINE 群組"""
@@ -140,7 +131,7 @@ class BinanceTwitterMonitor:
         users = {user['id']: user for user in data.get('includes', {}).get('users', [])}
         
         for tweet in tweets:
-            # 檢查推文內容是否包含目標關鍵字
+            # 檢查推文內容是否包含目標關鍵字（如果有設定的話）
             if self.check_keywords_match(tweet['text']):
                 author_id = tweet['author_id']
                 author = users.get(author_id, {})
@@ -163,9 +154,11 @@ class BinanceTwitterMonitor:
         created_at = tweet['created_at']
         tweet_id = tweet['id']
         
-        # 找出匹配的關鍵字
-        matched_keywords = [keyword for keyword in self.keywords 
-                          if keyword.lower() in tweet_text.lower()]
+        # 找出匹配的關鍵字（如果有設定的話）
+        matched_keywords = []
+        if self.filter_keywords:
+            matched_keywords = [keyword for keyword in self.filter_keywords 
+                              if keyword.lower() in tweet_text.lower()]
         
         # 格式化時間
         try:
@@ -174,21 +167,33 @@ class BinanceTwitterMonitor:
         except:
             formatted_time = created_at
         
-        message = f"""🚨 關鍵字監控通知！
-        
+        if matched_keywords:
+            message = f"""🚨 幣安官方推文通知！
+            
 🏷️ 匹配關鍵字: {', '.join(matched_keywords)}
 👤 發布者: {author_name} (@{author_username})
 📅 時間: {formatted_time}
 📝 內容: {tweet_text}
 🔗 連結: https://twitter.com/{author_username}/status/{tweet_id}
-        """
+            """
+        else:
+            message = f"""📢 幣安官方推文
+            
+👤 發布者: {author_name} (@{author_username})
+📅 時間: {formatted_time}
+📝 內容: {tweet_text}
+🔗 連結: https://twitter.com/{author_username}/status/{tweet_id}
+            """
         
         return message
     
     def run_monitor(self):
         """執行監控"""
-        logger.info(f"開始監控關鍵字: {', '.join(self.keywords)}")
-        logger.info(f"搜尋查詢: {self.search_query}")
+        logger.info(f"開始監控帳號: @{self.target_username}")
+        if self.filter_keywords:
+            logger.info(f"篩選關鍵字: {', '.join(self.filter_keywords)}")
+        else:
+            logger.info("監控該帳號的所有推文")
         
         while True:
             try:
@@ -220,8 +225,8 @@ def main():
     
     # 建立監控器並開始執行
     monitor = BinanceTwitterMonitor()
-    monitor.send_line_message("測試訊息")
-    # monitor.run_monitor()
+    # monitor.send_line_message("測試訊息, 詐騙死全家")
+    monitor.run_monitor()
 
 if __name__ == "__main__":
     main()
