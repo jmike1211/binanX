@@ -3,7 +3,7 @@
 ## 1. 安裝依賴套件
 
 ```bash
-pip3 install requests python-dotenv
+pip install requests python-dotenv flask line-bot-sdk
 ```
 
 ## 2. 環境變數設定
@@ -13,7 +13,8 @@ pip3 install requests python-dotenv
 ```
 X_BEARER_TOKEN=你的X_API_Bearer_Token
 LINE_BOT_TOKEN=你的LINE_Bot_Channel_Access_Token
-LINE_USER_ID=你的LINE_User_ID
+LINE_CHANNEL_SECRET=你的LINE_Channel_Secret
+LINE_GROUP_ID=你的LINE_Group_ID
 ```
 
 ## 3. 取得必要的 Token
@@ -24,11 +25,94 @@ LINE_USER_ID=你的LINE_User_ID
 3. 建立新的 App
 4. 取得 Bearer Token
 
-### LINE Bot Token
+### LINE Bot Token 和 Group ID
+
+#### 建立 LINE Bot
 1. 前往 https://developers.line.biz/
-2. 建立新的 Provider 和 Channel
+2. 建立新的 Provider 和 Channel (選擇 **Messaging API**)
 3. 取得 Channel Access Token
-4. 取得你的 User ID (可透過 LINE Bot 發送訊息給自己來取得)
+4. 在「Messaging API」頁面中開啟：
+   - ✅ **Allow bot to join group chats（允許加入群組聊天）**
+   - ✅ **Use webhooks**
+
+#### 取得 LINE 群組 ID 完整流程
+
+**步驟 1：安裝必要套件**
+```bash
+pip install flask line-bot-sdk
+```
+
+**步驟 2：設定環境變數**
+
+在 `.env` 檔案中加入：
+```
+LINE_BOT_TOKEN=你的_Channel_Access_Token
+LINE_CHANNEL_SECRET=你的_Channel_Secret
+```
+
+**步驟 3：安裝並設定 ngrok**
+```bash
+# macOS
+brew install --cask ngrok
+
+# 或手動下載
+# https://ngrok.com/download
+```
+
+首次使用需要 authtoken：
+1. 註冊帳號：https://dashboard.ngrok.com/signup
+2. 取得 authtoken：https://dashboard.ngrok.com/get-started/your-authtoken
+3. 執行指令：
+```bash
+ngrok config add-authtoken <你的_authtoken>
+```
+
+**步驟 4：啟動服務**
+
+終端機 1 - 啟動 Flask：
+```bash
+python3 get_group_id.py
+```
+
+終端機 2 - 啟動 ngrok：
+```bash
+ngrok http 5000
+```
+
+你會看到類似：
+```
+Forwarding https://abc123.ngrok.io -> http://localhost:5000
+```
+
+**步驟 5：設定 LINE Webhook**
+1. 回到 LINE Developers Console
+2. 將 Webhook URL 設為：`https://abc123.ngrok.io/callback`
+3. 點擊「Verify」測試連線
+4. 啟用 Webhook（⚡ Turn ON）
+
+**步驟 6：取得群組 ID**
+1. 在 LINE 群組中「邀請」你的 bot
+2. 在群組中輸入任何訊息
+3. `get_group_id.py` 終端機會印出：
+   ```
+   ✅ 群組 ID：C4a1f79f3bcaxxxxxxxxxxxxxxxxx
+   ```
+4. 複製此 ID 到 `.env` 檔案：
+   ```
+   LINE_GROUP_ID=C4a1f79f3bcaxxxxxxxxxxxxxxxxx
+   ```
+
+**步驟 7：測試群組訊息**
+```python
+# 測試發送訊息到群組
+monitor = BinanceTwitterMonitor()
+monitor.send_line_message("🔧 測試群組訊息發送")
+```
+
+**📌 重要提醒：**
+- 若沒人在群組中發言，LINE 不會送 webhook，請務必在群組中發言一次
+- 免費版 ngrok 每次重啟網址會變動，如需固定網址需升級帳號
+- 取得 Group ID 後就可以關閉 webhook 測試環境，專心執行監控程式
 
 ## 4. 免費版限制說明
 
@@ -130,12 +214,46 @@ A: 檢查以下項目：
 3. LINE Bot Token 是否有效
 4. 網路連線是否正常
 
-### Q: 如何測試 LINE Bot？
-A: 可以手動調用 `send_line_message()` 方法：
+### Q: 如何取得 LINE Group ID？
+A: 
+1. 建立 LINE Bot 並開啟群組功能
+2. 使用 Flask + ngrok 建立 Webhook 接收環境
+3. 把 Bot 加入目標群組
+4. 在群組中發送任何訊息
+5. 從 webhook 輸出中取得 Group ID
+
+### Q: ngrok 網址一直變動怎麼辦？
+A: 
+1. 免費版 ngrok 每次重啟網址會變動
+2. 取得 Group ID 後就可以關閉 ngrok
+3. 如需固定網址可升級 ngrok 帳號
+
+### Q: 機器人需要什麼權限？
+A: 確保在 LINE Bot 設定中開啟：
+- ✅ Use webhooks
+- ✅ Allow bot to join group chats
+- ✅ Auto-reply messages (可選)
+
+### Q: Webhook 沒有收到訊息怎麼辦？
+A: 檢查以下項目：
+1. ngrok 是否正在運行
+2. Webhook URL 是否正確設定
+3. LINE Bot 是否已加入群組
+4. 群組中是否有人發言（必須有人發言才會觸發 webhook）
+5. Channel Secret 是否正確設定
+
+### Q: 如何測試群組訊息？
+A: 取得 Group ID 後，可以手動測試：
 ```python
 monitor = BinanceTwitterMonitor()
-monitor.send_line_message("測試訊息")
+monitor.send_line_message("🔧 測試群組訊息發送")
 ```
+
+### Q: 取得 Group ID 後還需要 Webhook 嗎？
+A: 不需要！取得 Group ID 後：
+1. 可以關閉 `get_group_id.py` 和 ngrok
+2. 在 LINE Console 中可以關閉 Webhook (Turn OFF)
+3. 監控程式只需要 `LINE_BOT_TOKEN` 和 `LINE_GROUP_ID` 就能發送訊息
 
 ### Q: 如何調整關鍵字匹配策略？
 A: 在 `check_keywords_match()` 方法中有三種策略：

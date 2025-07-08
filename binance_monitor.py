@@ -4,11 +4,13 @@ import time
 import os
 from datetime import datetime
 import logging
+from dotenv import load_dotenv
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+load_dotenv()
 class BinanceTwitterMonitor:
     def __init__(self):
         # X API 設定 (免費版)
@@ -16,7 +18,7 @@ class BinanceTwitterMonitor:
         
         # LINE Bot 設定
         self.line_bot_token = os.getenv('LINE_BOT_TOKEN')  # 你的 LINE Bot Channel Access Token
-        self.line_user_id = os.getenv('LINE_USER_ID')     # 你的 LINE User ID 或 Group ID
+        self.line_group_id = os.getenv('LINE_GROUP_ID')   # 你的 LINE Group ID
         
         # API 端點
         self.x_api_url = "https://api.twitter.com/2/tweets/search/recent"
@@ -99,9 +101,9 @@ class BinanceTwitterMonitor:
             return None
     
     def send_line_message(self, message):
-        """發送訊息到 LINE"""
+        """發送訊息到 LINE 群組"""
         payload = {
-            "to": self.line_user_id,
+            "to": self.line_group_id,
             "messages": [
                 {
                     "type": "text",
@@ -118,14 +120,14 @@ class BinanceTwitterMonitor:
             )
             
             if response.status_code == 200:
-                logger.info("LINE 訊息發送成功")
+                logger.info("LINE 群組訊息發送成功")
                 return True
             else:
                 logger.error(f"LINE API 錯誤: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
-            logger.error(f"發送 LINE 訊息時發生錯誤: {str(e)}")
+            logger.error(f"發送 LINE 群組訊息時發生錯誤: {str(e)}")
             return False
     
     def process_tweets(self, data):
@@ -209,7 +211,7 @@ class BinanceTwitterMonitor:
 
 def main():
     # 檢查環境變數
-    required_vars = ['X_BEARER_TOKEN', 'LINE_BOT_TOKEN', 'LINE_USER_ID']
+    required_vars = ['X_BEARER_TOKEN', 'LINE_BOT_TOKEN', 'LINE_GROUP_ID']
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
@@ -218,7 +220,8 @@ def main():
     
     # 建立監控器並開始執行
     monitor = BinanceTwitterMonitor()
-    monitor.run_monitor()
+    monitor.send_line_message("測試訊息")
+    # monitor.run_monitor()
 
 if __name__ == "__main__":
     main()
