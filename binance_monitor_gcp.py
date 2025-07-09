@@ -3,22 +3,24 @@ import time
 import os
 from datetime import datetime, timedelta, timezone
 import logging
-from dotenv import load_dotenv
+from google.cloud import secretmanager
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
 class BinanceTwitterMonitor:
     def __init__(self):
-        # X API 設定 (免費版)
-        self.bearer_token = os.getenv('X_BEARER_TOKEN')  # 你的 X API Bearer Token
+        # GCP 專案設定
+        self.project_id = os.getenv('GCP_PROJECT_ID')
         
-        # LINE Bot 設定
-        self.line_bot_token = os.getenv('LINE_BOT_TOKEN')  # 你的 LINE Bot Channel Access Token
-        self.line_group_id = os.getenv('LINE_GROUP_ID')   # 你的 LINE Group ID
+        # 初始化 Secret Manager 客戶端
+        self.secret_client = secretmanager.SecretManagerServiceClient()
+        
+        # 從 Secret Manager 取得 API tokens
+        self.bearer_token = self._get_secret('X_BEARER_TOKEN')
+        self.line_bot_token = self._get_secret('LINE_BOT_TOKEN')
+        self.line_group_id = self._get_secret('LINE_GROUP_ID')
         
         # API 端點
         self.x_api_url = "https://api.twitter.com/2/tweets/search/recent"
@@ -32,7 +34,17 @@ class BinanceTwitterMonitor:
         self.filter_keywords = ["上线", "Alpha", "TGE", "积分"]  # 可以留空 [] 來取得所有推文
         
         self.last_tweet_id = None
-        
+
+    def _get_secret(self, secret_name):
+        """從 Secret Manager 取得機密資訊"""
+        try:
+            name = f"projects/{self.project_id}/secrets/{secret_name}/versions/latest"
+            response = self.secret_client.access_secret_version(request={"name": name})
+            return response.payload.data.decode("UTF-8")
+        except Exception as e:
+            logger.error(f"無法取得機密 {secret_name}: {str(e)}")
+            return None
+   
     def get_twitter_headers(self):
         """取得 X API 請求標頭"""
         return {
@@ -46,17 +58,17 @@ class BinanceTwitterMonitor:
             "Authorization": f"Bearer {self.line_bot_token}",
             "Content-Type": "application/json"
         }
-    
+
     def _get_time_filter(self):
         """取得時間篩選條件（過去1小時）"""
         one_hour_ago = datetime.now() - timedelta(hours=1)
         # X API 使用 ISO 8601 格式
         return one_hour_ago.isoformat(timespec='seconds').replace('+00:00', 'Z')
-
+    
     def search_tweets(self):
         """搜尋指定帳號的推文"""
-
         start_time = self._get_time_filter()
+
         params = {
             "query": self.search_query,
             "tweet.fields": "created_at,author_id,text,public_metrics",
