@@ -3,7 +3,6 @@ import time
 import os
 from datetime import datetime, timedelta, timezone
 import logging
-from google.cloud import secretmanager
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,9 +17,9 @@ class BinanceTwitterMonitor:
         self.secret_client = secretmanager.SecretManagerServiceClient()
         
         # 從 Secret Manager 取得 API tokens
-        self.bearer_token = self._get_secret('X_BEARER_TOKEN')
-        self.line_bot_token = self._get_secret('LINE_BOT_TOKEN')
-        self.line_group_id = self._get_secret('LINE_GROUP_ID')
+        self.bearer_token = os.getenv('X_BEARER_TOKEN')
+        self.line_bot_token = os.getenv('LINE_BOT_TOKEN')
+        self.line_group_id = os.getenv('LINE_GROUP_ID')
         
         # API 端點
         self.x_api_url = "https://api.twitter.com/2/tweets/search/recent"
@@ -61,14 +60,13 @@ class BinanceTwitterMonitor:
 
     def _get_time_filter(self):
         """取得時間篩選條件（過去1小時）"""
-        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1, seconds=10)
         # X API 使用 ISO 8601 格式
-        return one_hour_ago.isoformat(timespec='seconds').replace('+00:00', 'Z')
+        return one_hour_ago.strftime('%Y-%m-%dT%H:%M:%S.000Z')
     
     def search_tweets(self):
         """搜尋指定帳號的推文"""
         start_time = self._get_time_filter()
-
         params = {
             "query": self.search_query,
             "tweet.fields": "created_at,author_id,text,public_metrics",
